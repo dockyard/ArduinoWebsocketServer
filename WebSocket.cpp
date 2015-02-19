@@ -34,28 +34,38 @@ void WebSocket::begin() {
 
 
 void WebSocket::listen() {
-	EthernetClient cli;
-    if (cli = server.available()) {
-        if (cli == true) {
-            if (state == DISCONNECTED ) {
-				client = cli;
-                if (doHandshake() == true) {
-                    state = CONNECTED;
+    EthernetClient cli = server.available();
+    if (cli) {
+        if (state == DISCONNECTED) {
+            client = cli;
+            if (doHandshake()) {
+                state = CONNECTED;
+                if (onConnect) {
+                    onConnect(*this);
+                }
+            }
+        } else {
+            if (client.connected()) {
+              if (!getFrame()) {
+                  // Got unhandled frame, disconnect
+              #ifdef DEBUG
+                  Serial.println("Disconnecting");
+              #endif
+                  disconnectStream();
+                  state = DISCONNECTED;
+                  if (onDisconnect) {
+                      onDisconnect(*this);
+                  }
+              }
+            } else {
+                disconnectStream();
+                client = cli;
+                if (doHandshake()) {
                     if (onConnect) {
                         onConnect(*this);
                     }
-                }
-            } else {
-                if (getFrame() == false) {
-                    // Got unhandled frame, disconnect
-	            	#ifdef DEBUG
-	                	Serial.println("Disconnecting");
-	            	#endif
-                    disconnectStream();
+                } else {
                     state = DISCONNECTED;
-                    if (onDisconnect) {
-                        onDisconnect(*this);
-                    }
                 }
             }
         }
@@ -221,10 +231,10 @@ bool WebSocket::getFrame() {
             
         default:
             // Unexpected. Ignore. Probably should blow up entire universe here, but who cares.
-    		#ifdef DEBUG
-        		Serial.println("Unhandled frame ignored.");
-    		#endif
-			return false;
+        #ifdef DEBUG
+            Serial.println("Unhandled frame ignored.");
+        #endif
+            return false;
             break;
     }
     return true;
