@@ -18,7 +18,7 @@ struct Frame {
 
 WebSocket::WebSocket(const char *urlPrefix, int inPort) :
     server(inPort),
-//    client(255),
+    //    client(255),
     socket_urlPrefix(urlPrefix)
 {
     state = DISCONNECTED;
@@ -34,28 +34,38 @@ void WebSocket::begin() {
 
 
 void WebSocket::listen() {
-	EthernetClient cli;
-    if (cli = server.available()) {
-        if (cli == true) {
-            if (state == DISCONNECTED ) {
-				client = cli;
-                if (doHandshake() == true) {
-                    state = CONNECTED;
-                    if (onConnect) {
-                        onConnect(*this);
-                    }
+    EthernetClient cli = server.available();
+    if (cli) {
+        if (state == DISCONNECTED) {
+            client = cli;
+            if (doHandshake()) {
+                state = CONNECTED;
+                if (onConnect) {
+                    onConnect(*this);
                 }
-            } else {
-                if (getFrame() == false) {
+            }
+        } else {
+            if (client.connected()) {
+                if (!getFrame()) {
                     // Got unhandled frame, disconnect
-	            	#ifdef DEBUG
-	                	Serial.println("Disconnecting");
-	            	#endif
+                    #ifdef DEBUG
+                    Serial.println("Disconnecting");
+                    #endif
                     disconnectStream();
                     state = DISCONNECTED;
                     if (onDisconnect) {
                         onDisconnect(*this);
                     }
+                }
+            } else {
+                disconnectStream();
+                client = cli;
+                if (doHandshake()) {
+                    if (onConnect) {
+                        onConnect(*this);
+                    }
+                } else {
+                    state = DISCONNECTED;
                 }
             }
         }
@@ -64,7 +74,7 @@ void WebSocket::listen() {
 
 
 bool WebSocket::isConnected() {
-	return (state == CONNECTED) ? true : false;
+    return (state == CONNECTED) ? true : false;
 }
 
 
@@ -79,7 +89,7 @@ bool WebSocket::doHandshake() {
     char temp[128];
     char key[80];
     char bite;
-    
+
     bool hasUpgrade = false;
     bool hasConnection = false;
     bool isSupportedVersion = false;
@@ -93,12 +103,12 @@ bool WebSocket::doHandshake() {
 
         if (bite == '\n' || counter > 127) { // EOL got, or too long header. temp should now contain a header string
             temp[counter - 2] = 0; // Terminate string before CRLF
-            
+
             #ifdef DEBUG
-                Serial.print("Got header: ");
-                Serial.println(temp);
+            Serial.print("Got header: ");
+            Serial.println(temp);
             #endif
-            
+
             // Ignore case when comparing and allow 0-n whitespace after ':'. See the spec:
             // http://www.w3.org/Protocols/rfc2616/rfc2616-sec4.html
             if (!hasUpgrade && strstr(temp, "Upgrade:")) {
@@ -117,7 +127,7 @@ bool WebSocket::doHandshake() {
             } else if (!isSupportedVersion && strstr(temp, "Sec-WebSocket-Version: ") && strstr(temp, "13")) {
                 isSupportedVersion = true;
             }
-            
+
             counter = 0; // Start saving new header string
         }
     }
@@ -141,17 +151,17 @@ bool WebSocket::doHandshake() {
         // Nope, failed handshake. Disconnect
         return false;
     }
-    
+
     return true;
 }
 
 
 bool WebSocket::getFrame() {
     byte bite;
-    
+
     // Get opcode
     bite = client.read();
-        
+
     frame.opcode = bite & 0xf; // Opcode
     frame.isFinal = bite & 0x80; // Final frame?
     // Determine length (only accept <= 64 for now)
@@ -159,8 +169,8 @@ bool WebSocket::getFrame() {
     frame.length = bite & 0x7f; // Length of payload
     if (frame.length > 64) {
         #ifdef DEBUG
-            Serial.print("Too big frame to handle. Length: ");
-            Serial.println(frame.length);
+        Serial.print("Too big frame to handle. Length: ");
+        Serial.println(frame.length);
         #endif
         client.write((uint8_t) 0x08);
         client.write((uint8_t) 0x02);
@@ -176,7 +186,7 @@ bool WebSocket::getFrame() {
         frame.mask[2] = client.read();
         frame.mask[3] = client.read();
     }
-    
+
     // Get message bytes and unmask them if necessary
     for (int i = 0; i < frame.length; i++) {
         if (frame.isMasked) {
@@ -185,15 +195,15 @@ bool WebSocket::getFrame() {
             frame.data[i] = client.read();
         }
     }
-    
+
     //
     // Frame complete!
     //
-    
+
     if (!frame.isFinal) {
         // We don't handle fragments! Close and disconnect.
         #ifdef DEBUG
-            Serial.println("Non-final frame, doesn't handle that.");
+        Serial.println("Non-final frame, doesn't handle that.");
         #endif
         client.print((uint8_t) 0x08);
         client.write((uint8_t) 0x02);
@@ -208,23 +218,23 @@ bool WebSocket::getFrame() {
             if (onData)
                 onData(*this, frame.data, frame.length);
             break;
-            
+
         case 0x08:
             // Close frame. Answer with close and terminate tcp connection
             // TODO: Receive all bytes the client might send before closing? No?
             #ifdef DEBUG
-                Serial.println("Close frame received. Closing in answer.");
+            Serial.println("Close frame received. Closing in answer.");
             #endif
             client.write((uint8_t) 0x08);
             return false;
             break;
-            
+
         default:
             // Unexpected. Ignore. Probably should blow up entire universe here, but who cares.
-    		#ifdef DEBUG
-        		Serial.println("Unhandled frame ignored.");
-    		#endif
-			return false;
+            #ifdef DEBUG
+            Serial.println("Unhandled frame ignored.");
+            #endif
+            return false;
             break;
     }
     return true;
@@ -243,18 +253,18 @@ void WebSocket::registerDisconnectCallback(Callback *callback) {
 
 
 bool WebSocket::send(char *data, byte length) {
-	if (state == CONNECTED) {
+    if (state == CONNECTED) {
         server.write((uint8_t) 0x81); // Txt frame opcode
         server.write((uint8_t) length); // Length of data
         for (int i = 0; i < length ; i++) {
             server.write(data[i]);
         }
-		delay(1);
+        delay(1);
         return true;
     }
-#ifdef DEBUG
+    #ifdef DEBUG
     Serial.println("No connection to client, no data sent.");
-#endif
-	
+    #endif
+
     return false;
 }
