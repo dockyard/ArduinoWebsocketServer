@@ -94,7 +94,7 @@ bool WebSocket::doHandshake() {
     bool hasConnection = false;
     bool isSupportedVersion = false;
     bool hasHost = false;
-    bool hasOrigin = false;
+    bool hasOrigin = true;
     bool hasKey = false;
 
     byte counter = 0;
@@ -116,8 +116,8 @@ bool WebSocket::doHandshake() {
                 hasUpgrade = true;	
             } else if (!hasConnection && strstr(temp, "Connection: ")) {
                 hasConnection = true;
-            } else if (!hasOrigin && strstr(temp, "Origin:")) {
-                hasOrigin = true;
+            // } else if (!hasOrigin && strstr(temp, "Origin:")) {
+                // hasOrigin = true;
             } else if (!hasHost && strstr(temp, "Host: ")) {
                 hasHost = true;
             } else if (!hasKey && strstr(temp, "Sec-WebSocket-Key: ")) {
